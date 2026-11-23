@@ -28,6 +28,8 @@ import { cookieFor, fakeConfig, NAV, request, world, type FakeWorld, type Person
 const ROOT_URL = process.env.TEAM_TEST_PG_URL ?? '';
 const MIGRATIONS = join(import.meta.dir, '..', 'migrations');
 const RUN = `${process.pid}_${Date.now()}`;
+/** The password of this run's own logins, which this file makes and drops: a server that asks for passwords lets them in too. */
+const LOGIN_PASSWORD = `pw_${RUN}`;
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 type ErrorBody = { error?: { type: string; code: string; message: string; param?: string } };
@@ -91,7 +93,7 @@ describe.skipIf(!ROOT_URL)('the team tables under real use (pg)', () => {
     url.pathname = `/${database}`;
     if (login) {
       url.username = login;
-      url.password = '';
+      url.password = LOGIN_PASSWORD;
     }
     return url.toString();
   }
@@ -912,7 +914,7 @@ describe.skipIf(!ROOT_URL)('the team tables under real use (pg)', () => {
   // ------------------------------------------------------------ (4) the app login's rights
 
   test("the app login: reads and writes the team, reads and adds history, and can't change, empty or unguard history", async () => {
-    for (const login of [ownerLogin, appLogin, handLogin]) await admin.unsafe(`create role "${login}" login`);
+    for (const login of [ownerLogin, appLogin, handLogin]) await admin.unsafe(`create role "${login}" login password '${LOGIN_PASSWORD}'`);
     await sql.unsafe(`create schema grants authorization "${ownerLogin}"`);
     await sql.unsafe(`grant usage on schema grants to "${appLogin}", "${handLogin}"`);
     // Like the framework's create-app-role.sql: every table the owner makes here is the app login's, in full.
