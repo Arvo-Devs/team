@@ -156,6 +156,7 @@ export type TeamErrorCode =
   | 'invalid_json'
   | 'body_too_large'
   | 'cross_site'
+  | 'not_json'
   | 'not_set_up'
   | 'internal_error'
   | 'invalid_email'

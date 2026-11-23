@@ -13,9 +13,10 @@
  *   DELETE 'roles/<id>'       delete a role (?version=)
  *
  * Anyone who may not open the Team page, anyone signed out and anyone
- * viewing as someone else gets the same "not found" as an unknown route. A
- * change from any other site is refused before anything is read. Every
- * answer is no-store.
+ * viewing as someone else gets the same "not found" as an unknown route,
+ * whatever they sent. A change that doesn't name one of the site's own
+ * hosts as its origin, or isn't sent as JSON, is refused before its body or
+ * the database is read. Every answer is no-store.
  */
 import type { ResolvedTeamConfig, TeamUser } from '../config';
 import type { TeamView } from '../nav';
@@ -106,15 +107,20 @@ export function createRouteHandlers<User extends TeamUser>(config: ResolvedTeamC
       ((kind === 'employees' && (method === 'POST' ? id === undefined : id !== undefined)) ||
         (kind === 'roles' && (method === 'POST' ? id === undefined : id !== undefined)));
     if (!known) return notFound();
-    if (!fromOwnPage(request.headers, config.siteHosts)) {
-      return apiError('permission', 'cross_site', "This change came from a page we don't trust, so it wasn't made.");
-    }
-    if (method !== 'DELETE' && !/^application\/json\b/i.test(request.headers.get('content-type') ?? '')) {
-      return apiError('invalid_request', 'invalid_json', 'Send the change as JSON.');
-    }
+    // Who is asking comes first: someone who may not open the Team page gets
+    // the unknown-route answer whatever they sent, so a refusal below never
+    // tells them a route is here.
     const who = await manager(request, true);
     if (who instanceof Response) return who;
     const me = who.me;
+    if (!fromOwnPage(request.headers, config.siteHosts)) {
+      return apiError('permission', 'cross_site', "This change came from a page we don't trust, so it wasn't made.");
+    }
+    // The page sends every change as JSON, a DELETE too. Another site's form
+    // can't: a browser asks this site first before it sends that header.
+    if (!/^application\/json\b/i.test(request.headers.get('content-type') ?? '')) {
+      return apiError('permission', 'not_json', "This change wasn't sent the way the Team page sends it, so it wasn't made.");
+    }
 
     let body: Record<string, unknown> = {};
     if (method !== 'DELETE') {

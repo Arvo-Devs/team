@@ -138,7 +138,30 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
   const nav = config.nav;
   const full = fullCatalog(nav, config.retiredGrants);
   const logged = new Set<string>();
-  let retiredDone = config.retiredGrants.size === 0;
+  const neverInARole = grantsNoRoleMayHold();
+  let retiredDone = neverInARole.size === 0;
+
+  /**
+   * The keys that come off every role: the ones the app retired, and a grant
+   * written on a Mass Access page (only Mass Access opens those, so no role
+   * may carry it, and it must not come back if the page is ever given by
+   * roles again). While the set-up has a problem, the retired list is left
+   * alone, since the problem may be in that list; a grant on a Mass Access
+   * page still goes, unless a role page or an action uses the same key.
+   */
+  function grantsNoRoleMayHold(): ReadonlySet<string> {
+    const out = new Set<string>(config.problem ? [] : config.retiredGrants);
+    try {
+      for (const { item } of allPages(nav)) {
+        if (accessOf(item) === 'mass-access' && typeof item.grant === 'string' && item.grant && !full.pages.has(item.grant) && !full.actions.has(item.grant)) {
+          out.add(item.grant);
+        }
+      }
+    } catch {
+      // A nav list too broken to read: the problem line already says so.
+    }
+    return out;
+  }
 
   /** One log line per process per kind of failure: this runs for every customer's request. */
   function logOnce(key: string, line: string, error?: unknown) {
@@ -350,16 +373,16 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
     return new Set(answers.filter(([, yes]) => yes).map(([id]) => id));
   }
 
-  /** Removes grants that left the app from every role, once per process. */
+  /** Removes the keys no role may hold (grantsNoRoleMayHold) from every role, once per process. */
   async function retireGrants(sql: Awaited<ReturnType<typeof database>>) {
     if (retiredDone) return;
-    const gone = [...config.retiredGrants];
+    const gone = [...neverInARole];
     await inTransaction(sql, async (tx) => {
       for (const role of await rolesHolding(tx, gone)) {
         const locked = await readRole(tx, role.id, 'update');
         if (!locked) continue;
-        const pages = locked.pages.filter((key) => !config.retiredGrants.has(key));
-        const actions = locked.actions.filter((key) => !config.retiredGrants.has(key));
+        const pages = locked.pages.filter((key) => !neverInARole.has(key));
+        const actions = locked.actions.filter((key) => !neverInARole.has(key));
         const out = [...removed(locked.pages, pages), ...removed(locked.actions, actions)];
         if (out.length === 0) continue;
         await updateRole(tx, { id: locked.id, version: locked.version, name: locked.name, pages, actions, by: null });
@@ -378,12 +401,10 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
   /** GET: everything the Team page shows this viewer. */
   async function state(me: Me, v: TeamView): Promise<TeamState> {
     const sql = await database();
-    if (!config.problem) {
-      try {
-        await retireGrants(sql);
-      } catch (error) {
-        logOnce('retire', '[Team] could not remove retired grants from roles (will try again)', error);
-      }
+    try {
+      await retireGrants(sql);
+    } catch (error) {
+      logOnce('retire', '[Team] could not remove retired grants from roles (will try again)', error);
     }
     const team = await readTeam(sql);
     const mine = team.employees.find((e) => e.id === me.id);
@@ -434,7 +455,10 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
         }))
       : null;
 
+    // Someone on the team who now has Mass Access is a Mass Access account,
+    // and a manager is never shown those: only Mass Access sees their row.
     const employees = team.employees
+      .filter((e) => me.massAccess || !massAccessIds.has(e.id))
       .map((e) => employeeView(e, actor, accounts, roleNames, massAccessIds, me.massAccess))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
@@ -694,7 +718,13 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
     const all = full[kind];
     for (const key of keys) {
       if (!all.has(key)) throw new Refused('invalid_request', 'invalid_parameter', "One of those pages isn't in the app anymore. Reload the page and try again.");
-      if (!allowed.has(key)) throw new Refused('permission', 'not_yours', 'You can only give pages you can open yourself.');
+      if (!allowed.has(key)) {
+        // Names the first one refused, so the person knows which tick to take off.
+        const label = labelMap()[key];
+        const rule = kind === 'pages' ? 'You can only give pages you can open yourself.' : 'You can only give actions you can do yourself.';
+        const which = !label ? '' : kind === 'pages' ? ` ${label} isn't one of them.` : ` "${label}" isn't one of them.`;
+        throw new Refused('permission', 'not_yours', `${rule}${which}`, undefined, 'pages');
+      }
     }
   }
 

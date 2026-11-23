@@ -89,7 +89,8 @@ export function request(path: string, options: RequestOptions = {}): Request {
   if (method !== 'GET') {
     if (options.origin !== null) headers.set('origin', options.origin ?? SITE);
     if (options.fetchSite) headers.set('sec-fetch-site', options.fetchSite);
-    if (options.body !== undefined && options.contentType !== null) headers.set('content-type', options.contentType ?? 'application/json');
+    // The page sends every change as JSON, a DELETE with no body too.
+    if (options.contentType !== null) headers.set('content-type', options.contentType ?? 'application/json');
   }
   return new Request(`${SITE}${path}`, {
     method,

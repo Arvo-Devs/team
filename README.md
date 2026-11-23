@@ -167,7 +167,9 @@ export const RETIRED_GRANTS: readonly string[] = [];
   its actions' keys in `RETIRED_GRANTS` (the config's `retiredGrants`). The
   server takes them off every role, with a History line per role, and
   `navProblem` refuses a live page that uses one, so a later page can't open
-  for the old role's people.
+  for the old role's people. A role page that becomes `mass-access` drops its
+  `grant` line (`navProblem` says so); if the grant is left on it, the server
+  takes that grant off every role the same way.
 - **A section labelled Admin can't hold an `everyone` page.**
 - **The Team page is in the list too,** as a `role` page (given to whoever
   manages the team) or `mass-access`. Its label is the page's title, and no
@@ -632,9 +634,12 @@ Errors come as `{ error: { type, code, message, hint?, param? }, requestId }`,
 and every answer is `no-store`. `message` is already in plain words for the
 screen, and `param` names the field a refusal is about (`email`, `name`,
 `pages`). Signed out, looking through someone else's account, or without the
-Team page: the same 404 as an address that doesn't exist. A change from
-another site is a 403, and one not sent as JSON a 400, before anything is
-read. Any other refusal is a 400, 403 or 409 with its `code`
+Team page: the same 404 as an address that doesn't exist, whatever was sent.
+Every change, a DELETE too, must name one of `siteHosts` in its `Origin`
+header and be sent as `application/json`, the way the page sends it: anything
+else is a 403 before its body or the database is read. A browser adds
+`Origin` itself, so a proxy in front of the app must pass it on. Any other
+refusal is a 400, 403 or 409 with its `code`
 (`TeamErrorCode`), 409 meaning the team changed first: a stale token or
 version, a name just taken, a role just deleted, someone already added. No
 database is a 503.

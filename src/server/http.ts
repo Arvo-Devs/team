@@ -41,15 +41,16 @@ export function notFound(): Response {
 }
 
 /**
- * True when a write came from one of the site's own pages. A browser always
- * names the origin on a cross-site POST, PATCH or DELETE; a request with no
- * origin at all is let through only when it does not say it is cross-site.
+ * True when a write came from one of the site's own pages: it names its
+ * origin, and that origin is one of `siteHosts`. A browser names the origin
+ * on every POST, PATCH and DELETE, so a change with none didn't come from
+ * the Team page and is refused, as is one the browser marks cross-site.
  * `siteHosts` are host names; the port is not compared.
  */
 export function fromOwnPage(headers: Headers, siteHosts: readonly string[]): boolean {
   if (headers.get('sec-fetch-site') === 'cross-site') return false;
   const origin = headers.get('origin');
-  if (!origin) return true;
+  if (!origin) return false;
   let host: string;
   try {
     host = new URL(origin).hostname.toLowerCase();

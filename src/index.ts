@@ -83,7 +83,15 @@ export function createTeam<User extends TeamUser = TeamUser>(input: TeamConfig<U
     routeHandlers: createRouteHandlers(config, core),
     view: (user) => core.view(user),
     can,
-    canDo: (user, actionKey) => allowed(async () => (user ? canDoAction(await core.view(user), nav, actionKey) : false)),
+    canDo: (user, actionKey) =>
+      allowed(async () => {
+        if (!user) return false;
+        const ok = canDoAction(await core.view(user), nav, actionKey);
+        if (!ok && typeof actionKey === 'string' && !nav.some((s) => s.items.some((i) => (i.actions ?? []).some((a) => a.key === actionKey)))) {
+          core.logOnce(`unknown-action-${actionKey}`, `[Team] canDo() was asked about "${actionKey}", which is no action in the nav list, so it answered no`);
+        }
+        return ok;
+      }),
     canOpen: (user, pathname) =>
       allowed(async () => {
         if (!user) return false;

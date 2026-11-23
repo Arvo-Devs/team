@@ -102,7 +102,7 @@ describe.skipIf(!ROOT_URL)('team (pg)', () => {
     // Maya can't give Payouts: she can't open it.
     const refused = await newRole('maya', 'Books', ['payouts']);
     expect(refused.status).toBe(403);
-    expect(refused.body.error?.message).toBe('You can only give pages you can open yourself.');
+    expect(refused.body.error?.message).toBe("You can only give pages you can open yourself. Payouts isn't one of them.");
     const support = await newRole('maya', 'Support', ['email']);
     expect(support.status).toBe(201);
     expect(support.body.mine).toBe(true);
@@ -161,7 +161,8 @@ describe.skipIf(!ROOT_URL)('team (pg)', () => {
     const body = { id: crypto.randomUUID(), name: 'X', pages: ['email'], actions: [] };
     expect((await call('POST', '/roles', 'olive', body, { origin: 'https://evil.example' })).status).toBe(403);
     expect((await call('POST', '/roles', 'olive', body, { fetchSite: 'cross-site', origin: null })).status).toBe(403);
-    expect((await call('POST', '/roles', 'olive', body, { contentType: 'text/plain' })).status).toBe(400);
+    expect((await call('POST', '/roles', 'olive', body, { contentType: 'text/plain' })).status).toBe(403);
+    expect((await call('POST', '/roles', 'olive', body, { origin: null })).status).toBe(403);
     expect((await sql`select count(*)::int as n from team_roles`)[0]!.n).toBe(0);
     // Viewing as someone: no changes, Mass Access included.
     const viewAs = await team.routeHandlers.POST(request('/api/team/roles', { method: 'POST', cookie: cookieFor('olive', true), body }));

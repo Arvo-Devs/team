@@ -9,11 +9,6 @@
  * migrations/*.sql and drops it at the end. History rows can never be
  * deleted, so a history check only reads rows newer than a mark it takes
  * first.
- *
- * `gap(...)` is `test.failing`: a test where the code does not do what the
- * design says. It passes while the gap is there and fails once the code is
- * fixed (make it a plain `test` then). Each one names its rule and the gap.
- * TEAM_SHOW_GAPS=1 runs them as plain tests, to see why each one fails.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -32,8 +27,6 @@ const NOT_FOUND_DIGEST = 'NEXT_HTTP_ERROR_FALLBACK;404';
 /** The error in the 404 a route that doesn't exist answers. */
 const ROUTE_404 = { type: 'not_found', code: 'route_not_found', message: 'This page does not exist.' };
 const NOBODY_VIEW = { massAccess: false, employee: false, pages: [], actions: [] };
-/** A known gap between the code and the design (see the top of the file). */
-const gap = process.env.TEAM_SHOW_GAPS ? test : test.failing;
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 type ErrorBody = { type: string; code: string; message: string; hint?: string; param?: string };
@@ -357,7 +350,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(await me(null)).toEqual({ status: 404, error: ROUTE_404 });
     });
 
-    gap('rules 1 and 2: a refused change does not show a signed-out visitor that a Team route exists (an unknown route answers 404, a real one 403 or 400)', async () => {
+    test('a refused change does not show a signed-out visitor that a Team route exists: it gets the unknown-route answer whatever it sent', async () => {
       const body = { id: crypto.randomUUID(), name: 'Probe', pages: ['email'], actions: [] };
       for (const headers of [{ origin: 'https://evil.example' }, { contentType: 'text/plain' }] as const) {
         const real = await call('POST', '/roles', null, { body, ...headers });
@@ -424,7 +417,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(w.signedOut).toEqual([]);
     });
 
-    gap('rule 2: a POST or PATCH that is not JSON is a 403 (the code answers 400 invalid_json)', async () => {
+    test('a POST or PATCH that is not JSON is a 403', async () => {
       const f = await setup();
       for (const [method, path, body] of (await writes(f)).filter(([m]) => m !== 'DELETE')) {
         const r = await call(method, path, 'olive', { body, contentType: 'text/plain' });
@@ -432,7 +425,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       }
     });
 
-    gap('rule 2: a DELETE that is not sent as JSON is refused and writes nothing (the code never checks a DELETE content-type)', async () => {
+    test('a DELETE that is not sent as JSON is refused and writes nothing', async () => {
       const f = await setup();
       const sam = await employeeRow('olive', 'sam');
       const before = await snapshot();
@@ -443,7 +436,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(w.signedOut).toEqual([]);
     });
 
-    gap('rule 2: a change with no Origin header is refused (the design asks for the Origin host to be in siteHosts; the code lets it through)', async () => {
+    test('a change with no Origin header is refused: the Origin host must be one of siteHosts', async () => {
       await setup();
       const before = await snapshot();
       const r = await call('POST', '/roles', 'olive', { body: { id: crypto.randomUUID(), name: 'No origin', pages: ['email'], actions: [] }, origin: null, fetchSite: null });
@@ -517,7 +510,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(await snapshot()).toBe(before);
     });
 
-    gap('rule 3: the 403 names the first refused item (the code says only "You can only give pages you can open yourself.")', async () => {
+    test('the 403 names the first refused item', async () => {
       await setup();
       const r = await call('POST', '/roles', 'maya', { body: { id: crypto.randomUUID(), name: 'Books two', pages: ['email', 'payouts', 'signup-funnel'], actions: [] } });
       expect(r.status).toBe(403);
@@ -1344,7 +1337,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(s.unassigned).toEqual(['Sign-up funnel']);
     });
 
-    gap('rule 10: an employee who now has Mass Access is a Mass Access row, so a manager is not shown it (the code lists it, with Manage off)', async () => {
+    test('an employee who now has Mass Access is a Mass Access row, so a manager is not shown it', async () => {
       await setup();
       w.massAccess.add('bob');
       const s = (await state('maya')).body;
@@ -1401,7 +1394,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       for (const id of ids) expect(await stored(id)).toMatchObject({ pages: ['email'], version: 2 });
     });
 
-    gap("rule 11: a mass-access page's grant comes off every role (the code only removes retiredGrants, and does no clean-up while navProblem complains)", async () => {
+    test("a mass-access page's grant comes off every role, even while the nav check complains about it", async () => {
       const nav: TeamNav = NAV.map((section) => ({ ...section, items: section.items.map((item) => (item.access === 'mass-access' ? { ...item, grant: 'log-in-as' } : item)) }));
       const id = await insertRoleRow('Impersonators', ['email', 'log-in-as'], []);
       const from = await mark();
@@ -1677,7 +1670,7 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect(await team.canOpen(null, '/dashboard')).toBe(false);
     });
 
-    gap('design section 3: canDo() with an unknown action is logged once, like can() (the code logs nothing)', async () => {
+    test('canDo() with an unknown action is logged once, like can()', async () => {
       await setup();
       w.logs.length = 0;
       for (let round = 0; round < 3; round += 1) await team.canDo(person('olive'), 'no-such.action');
