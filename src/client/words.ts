@@ -95,7 +95,7 @@ export function madeLine(opens: readonly string[], emailed: boolean | null = tru
 
 /** Manage, for someone looking who doesn't manage all of the person's roles. */
 export function hiddenRolesLine(name: string, hidden: number): string {
-  return `${name} also has ${rolesWord(hidden)} you don't manage. They stay as they are.`;
+  return `${name} also has ${rolesWord(hidden)} you don't manage. ${hidden === 1 ? 'It stays as it is' : 'They stay as they are'}.`;
 }
 
 /** Manage's line under the name: "jordan@company.com · Added Sep 12 by Ana Lee". */

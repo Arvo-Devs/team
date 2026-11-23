@@ -454,7 +454,7 @@ describe('the sentences the dialogs build', () => {
   test('the done lines, the hidden-roles line, the delete line and people counts', () => {
     expect(joinedLine('jordan@company.test', ['Overview', 'Email'])).toBe("jordan@company.test can open: Overview, Email. They'll need to sign in again to see them.");
     expect(madeLine(['Overview', 'Email'])).toBe("They're on the team. They can sign in once they set their password from the email. They'll open: Overview, Email.");
-    expect(hiddenRolesLine('Jordan Lee', 1)).toBe("Jordan Lee also has 1 role you don't manage. They stay as they are.");
+    expect(hiddenRolesLine('Jordan Lee', 1)).toBe("Jordan Lee also has 1 role you don't manage. It stays as it is.");
     expect(hiddenRolesLine('Jordan Lee', 2)).toBe("Jordan Lee also has 2 roles you don't manage. They stay as they are.");
     expect(deleteRoleLine(0)).toBe('Nobody has this role yet.');
     expect(deleteRoleLine(1)).toBe('1 person has it. They lose its pages unless another of their roles opens them.');

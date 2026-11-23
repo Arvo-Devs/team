@@ -89,6 +89,8 @@ function DialogBody({
             'flex max-h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-input bg-card text-foreground shadow-lg outline-none',
             'transition-[transform,opacity] duration-200 ease-out',
             'data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[starting-style]:opacity-0',
+            // A confirm opened from this dialog sits on top of it: this one dims like the page behind it, so the question stands alone.
+            'relative after:pointer-events-none after:absolute after:inset-0 after:z-10 after:rounded-[inherit] after:bg-black/0 after:transition-colors after:duration-200 data-[nested-dialog-open]:after:bg-black/40',
             size === 'sm' && 'max-w-md',
             size === 'md' && 'max-w-lg',
             size === 'lg' && 'max-w-2xl',
