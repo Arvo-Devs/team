@@ -8,7 +8,7 @@
 // may give (the server's catalog); the server keeps whatever else the role
 // stores, so the editor only ever sends what it shows (design §6, rule 4).
 import { LockKeyhole, Trash2 } from 'lucide-react';
-import { useId, useMemo, useRef, useState, type FormEvent, type Ref } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type Ref } from 'react';
 import { newRoleId, type CatalogPage, type CatalogSection, type RoleView, type TeamState } from '../shared/api';
 import { Button, Checkbox, cn, ConfirmDialog, Dialog, DialogContent, errorWords, Field, InlineError, Input, Spinner, type TeamError } from '../ui/ui-deps';
 import { useCreateRole, useDeleteRole, useEditRole } from './api';
@@ -98,9 +98,20 @@ export function RoleEditorDialog({
   const sending = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const pagesErrorRef = useRef<HTMLParagraphElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const saveError = (role ? edit.error : create.error) ?? null;
   const field = fieldOf(saveError);
+
+  // A refusal can land outside what the dialog shows (the checklist scrolls): go to it.
+  useEffect(() => {
+    if (!saveError) return;
+    const where = fieldOf(saveError);
+    if (where === 'name') nameRef.current?.focus();
+    else if (where === 'pages') pagesErrorRef.current?.scrollIntoView({ block: 'center' });
+    else bottomRef.current?.scrollIntoView({ block: 'center' });
+  }, [saveError]);
   // Nothing ticked at all, the server's own rule: an action on a page every employee opens counts too.
   const empty = pages.length === 0 && !actions.some((key) => keeps(facts, pages, key));
   const nameError = tried && !name.trim() ? 'Give the role a name.' : field === 'name' ? errorWords(saveError) : undefined;
@@ -116,6 +127,15 @@ export function RoleEditorDialog({
     role.mine &&
     role.pages.includes(team.grant) &&
     !pages.includes(team.grant) &&
+    !state.roles.some((other) => other.mine && other.id !== role.id && other.pages.includes(team.grant));
+
+  // Deleting the only role of theirs that opens the Team page locks a manager out the same way.
+  const deleteLocksOut =
+    !!role &&
+    !!team &&
+    !state.viewer.massAccess &&
+    role.mine &&
+    role.pages.includes(team.grant) &&
     !state.roles.some((other) => other.mine && other.id !== role.id && other.pages.includes(team.grant));
 
   const changed = () => {
@@ -161,7 +181,8 @@ export function RoleEditorDialog({
       return;
     }
     if (empty) {
-      listRef.current?.scrollIntoView({ block: 'nearest' });
+      // The line is drawn by this click: go to it once it is on the page.
+      requestAnimationFrame(() => pagesErrorRef.current?.scrollIntoView({ block: 'center' }));
       return;
     }
     if (takesTeamOff) {
@@ -253,16 +274,21 @@ export function RoleEditorDialog({
             onPage={onPage}
             onAction={onAction}
             pagesError={pagesError}
+            pagesErrorRef={pagesErrorRef}
             listRef={listRef}
           />
-          {saveError && !field ? <InlineError error={saveError} action={errorAction(saveError)} /> : null}
+          {saveError && !field ? (
+            <div ref={bottomRef}>
+              <InlineError error={saveError} action={errorAction(saveError)} />
+            </div>
+          ) : null}
         </form>
         {role ? (
           <ConfirmDialog
             open={confirm === 'delete'}
             onOpenChange={(next) => setConfirm(next ? 'delete' : null)}
             title={`Delete ${role.name}?`}
-            consequence={deleteRoleLine(role.people)}
+            consequence={deleteLocksOut ? `${deleteRoleLine(role.people)} You'll lose this page too, and won't be able to come back to it.` : deleteRoleLine(role.people)}
             confirmLabel="Delete role"
             pendingLabel="Deleting…"
             pending={remove.isPending}
@@ -303,6 +329,7 @@ export function RoleEditorFields({
   onPage,
   onAction,
   pagesError,
+  pagesErrorRef,
   listRef,
 }: {
   state: Pick<TeamState, 'catalog' | 'viewer'>;
@@ -316,6 +343,7 @@ export function RoleEditorFields({
   onPage: (grant: string, ticked: boolean) => void;
   onAction: (key: string, ticked: boolean) => void;
   pagesError?: string;
+  pagesErrorRef?: Ref<HTMLParagraphElement>;
   listRef?: Ref<HTMLDivElement>;
 }) {
   const tickable = state.catalog.flatMap((section) => section.pages.flatMap((page) => (!page.locked && page.grant ? [page.grant] : [])));
@@ -328,7 +356,7 @@ export function RoleEditorFields({
       <DialogSection title="Pages" aside={`${ticked} of ${tickable.length}`}>
         <p className="-mt-1.5 text-xs leading-relaxed text-muted-foreground">People in this role can open the pages you tick.</p>
         {pagesError ? (
-          <p role="alert" className="text-xs leading-relaxed text-danger-strong">
+          <p ref={pagesErrorRef} role="alert" className="text-xs leading-relaxed text-danger-strong">
             {pagesError}
           </p>
         ) : null}

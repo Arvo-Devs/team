@@ -119,8 +119,9 @@ function Page({ renderHeader }: Pick<TeamPageProps, 'renderHeader'>) {
     );
   }
   // Read again and the answer is that they are signed out, or can't open the page anymore: say so instead of what they could see before.
+  // An open dialog stays until it is closed, with what was typed in it: its own save says the same thing.
   const kind = query.error ? errorKind(query.error) : null;
-  if (kind === 'signed_out' || kind === 'lost_page') {
+  if ((kind === 'signed_out' || kind === 'lost_page') && !opened?.open) {
     return (
       <Card>
         <ErrorState error={query.error} />

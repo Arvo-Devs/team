@@ -56,7 +56,7 @@ export function Field({
           </p>
         ) : null}
         {error ? (
-          <p id={ids.errorId} role="alert" className="text-xs leading-relaxed text-danger-strong">
+          <p id={ids.errorId} role="alert" className="text-xs leading-relaxed text-danger-strong [overflow-wrap:anywhere]">
             {error}
           </p>
         ) : null}

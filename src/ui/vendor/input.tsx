@@ -6,7 +6,7 @@ import { cn } from './cn';
 import { useFieldControl } from './field';
 
 export const inputClass = cn(
-  'h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground',
+  'h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground sm:text-sm',
   'placeholder:text-muted-foreground/80 transition-[border-color,box-shadow] duration-150',
   'outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20',
   'disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-danger-strong aria-invalid:ring-danger-strong/20',

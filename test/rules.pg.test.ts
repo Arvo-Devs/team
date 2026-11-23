@@ -892,11 +892,11 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       w.accounts.set('vic', { id: 'vic', name: 'Vic Vague', email: 'vic@example.com', emailVerified: null, lastSeenAt: null });
       const before = await snapshot();
       const cases: Array<{ who: string; email: string; code: string; message: string; param?: string }> = [
-        { who: 'olive', email: 'mia@example.com', code: 'has_mass_access', message: 'Mia Mass has Mass Access, so they already open every page.' },
-        { who: 'maya', email: 'olive@example.com', code: 'has_mass_access', message: 'Olive Owner has Mass Access, so they already open every page.' },
-        { who: 'maya', email: 'sam@example.com', code: 'already_employee', message: 'Sam Support is already an employee.' },
-        { who: 'maya', email: 'maya@example.com', code: 'self', message: "You can't add yourself." },
-        { who: 'olive', email: 'olive@example.com', code: 'self', message: "You can't add yourself." },
+        { who: 'olive', email: 'mia@example.com', code: 'has_mass_access', message: 'Mia Mass has Mass Access, so they already open every page.', param: 'email' },
+        { who: 'maya', email: 'olive@example.com', code: 'has_mass_access', message: 'Olive Owner has Mass Access, so they already open every page.', param: 'email' },
+        { who: 'maya', email: 'sam@example.com', code: 'already_employee', message: 'Sam Support is already an employee.', param: 'email' },
+        { who: 'maya', email: 'maya@example.com', code: 'self', message: "You can't add yourself.", param: 'email' },
+        { who: 'olive', email: 'olive@example.com', code: 'self', message: "You can't add yourself.", param: 'email' },
         {
           who: 'maya',
           email: 'una@example.com',
@@ -955,6 +955,49 @@ describe.skipIf(!ROOT_URL)('design v2 rules (pg)', () => {
       expect([r3.status, r3.body.error?.code, r3.body.error?.param]).toEqual([400, 'name_required', 'name']);
       expect(w.made).toHaveLength(2);
       expect(w.signedOut).toEqual([]);
+    });
+
+    test('a role that is gone is refused before any login is made, for Mass Access too', async () => {
+      await setup();
+      const gone = crypto.randomUUID();
+      const r = await add('olive', 'nia@example.com', [gone], { name: 'Nia New' });
+      expect([r.status, r.body.error?.code]).toEqual([409, 'role_gone']);
+      expect(w.made).toEqual([]);
+    });
+
+    test('a login made just before the add is refused: the answer says the login exists and what to do', async () => {
+      const f = await setup();
+      const makeAccount = fakeConfig(w).createAccount!;
+      // The role is deleted in the moment between the app making the login and the person being put on the team.
+      team = make({
+        createAccount: async (input) => {
+          const made = await makeAccount(input);
+          await sql`delete from team_roles where id = ${f.payouts.id}::uuid`;
+          return made;
+        },
+      });
+      const r = await add('olive', 'nia@example.com', [f.payouts.id], { name: 'Nia New' });
+      expect([r.status, r.body.error?.code]).toEqual([409, 'account_made_not_added']);
+      expect(r.body.error?.message).toBe(
+        "One of those roles was just deleted. Close this and try again. Their login was made and they were emailed, but they aren't on the team yet. Once they've confirmed their email, add them again.",
+      );
+      expect(w.made).toHaveLength(1);
+      expect(await rolesOf(w.made[0]!)).toEqual([]);
+      expect((await state('olive')).body.employees.map((e) => e.id)).not.toContain(w.made[0]!);
+    });
+
+    test('a refusal about the typed email names the email field, so the page shows it under Email', async () => {
+      await setup();
+      w.massAccess.add('cara');
+      const tries: Array<[string, string, string]> = [
+        ['maya', 'maya@example.com', 'self'],
+        ['olive', 'sam@example.com', 'already_employee'],
+        ['olive', 'cara@example.com', 'has_mass_access'],
+      ];
+      for (const [who, email, code] of tries) {
+        const r = await add(who, email, []);
+        expect({ email, code: r.body.error?.code, param: r.body.error?.param }).toEqual({ email, code, param: 'email' });
+      }
     });
 
     test('createAccount answering created: false means the account-exists rules apply', async () => {

@@ -130,20 +130,51 @@ const defaultLog: TeamLog = (line, error) => {
 };
 
 /**
+ * A nav list with everything unreadable left out: sections that aren't a
+ * section, items with no label or address, action lists that aren't lists.
+ * The rest is kept as it is, each unclear page closed by the check.
+ */
+function readableNav(raw: readonly unknown[]): TeamNav {
+  const out: Array<TeamNav[number]> = [];
+  for (const section of raw) {
+    if (!section || typeof section !== 'object') continue;
+    const { label, items } = section as { label?: unknown; items?: unknown };
+    if (!Array.isArray(items)) continue;
+    const kept: TeamNavItem[] = [];
+    for (const item of items as unknown[]) {
+      if (!item || typeof item !== 'object') continue;
+      const page = item as Partial<TeamNavItem> & { actions?: unknown };
+      if (typeof page.label !== 'string' || typeof page.href !== 'string') continue;
+      const actions = Array.isArray(page.actions)
+        ? (page.actions as unknown[]).filter(
+            (a): a is NonNullable<TeamNavItem['actions']>[number] =>
+              !!a && typeof a === 'object' && typeof (a as { key?: unknown }).key === 'string' && typeof (a as { label?: unknown }).label === 'string',
+          )
+        : undefined;
+      kept.push({ ...(page as TeamNavItem), ...(page.actions === undefined ? {} : { actions: actions ?? [] }) });
+    }
+    out.push({ ...(section as TeamNav[number]), label: typeof label === 'string' ? label : null, items: kept });
+  }
+  return out;
+}
+
+/**
  * Reads the config once. Never throws: what is wrong is kept in `problem`,
  * logged once, and shown on the Team page to Mass Access; the check keeps
  * working on whatever the nav list says, each unclear page closed.
  */
 export function normalizeConfig<User extends TeamUser>(input: TeamConfig<User>): ResolvedTeamConfig<User> {
   const log = typeof input?.log === 'function' ? input.log : defaultLog;
-  const nav: TeamNav = Array.isArray(input?.nav) ? input.nav : [];
+  const rawNav: TeamNav = Array.isArray(input?.nav) ? input.nav : [];
   const retired = Array.isArray(input?.retiredGrants) ? input.retiredGrants.filter((g): g is string => typeof g === 'string') : [];
   const teamPage = typeof input?.teamPage === 'string' ? input.teamPage : '';
   const siteHosts = Array.isArray(input?.siteHosts)
     ? input.siteHosts.filter((h): h is string => typeof h === 'string' && h.trim() !== '').map((h) => h.trim().toLowerCase())
     : [];
 
-  let problem = navProblem(nav, { teamPage, retiredGrants: retired });
+  let problem = navProblem(rawNav, { teamPage, retiredGrants: retired });
+  // A list the check refuses may hold anything. What can't be read is left out, so createTeam never throws on it.
+  const nav = problem ? readableNav(rawNav) : rawNav;
   if (!problem && siteHosts.length === 0) problem = "siteHosts is empty: list the site's own hosts, so the Team page's changes can be checked.";
   if (!problem && typeof input?.signOutEverywhere !== 'function') problem = 'signOutEverywhere is missing: the Team page signs someone out when they join or are removed.';
   if (!problem && (typeof input?.accounts?.byIds !== 'function' || typeof input?.accounts?.byEmail !== 'function')) {

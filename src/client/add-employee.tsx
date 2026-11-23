@@ -8,7 +8,7 @@
 // says who got in and what they open, with Undo for the wrong person: Undo
 // takes them off the team again and goes back to the form as it was.
 import { Check, Copy } from 'lucide-react';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { AddResult, TeamState } from '../shared/api';
 import { Button, COPY_FAILED, Dialog, DialogContent, errorWords, Field, InlineError, Input, Spinner, useCopy, type TeamError } from '../ui/ui-deps';
 import { useAddEmployee, useRemoveEmployee } from './api';
@@ -51,9 +51,20 @@ export function AddEmployeeDialog({
   const sending = useRef(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const askName = state.canMakeAccounts;
   const field = fieldOf(add.error);
+
+  // A refusal can land outside what the dialog shows (the form scrolls): go to it.
+  const refusal = add.error;
+  useEffect(() => {
+    if (!refusal) return;
+    const where = fieldOf(refusal);
+    if (where === 'email') emailRef.current?.focus();
+    else if (where === 'name') nameRef.current?.focus();
+    else bottomRef.current?.scrollIntoView({ block: 'center' });
+  }, [refusal]);
   const emailError = tried && !looksLikeEmail(email) ? EMAIL_LINE : field === 'email' ? errorWords(add.error) : undefined;
   const nameError = askName && tried && name.trim().length === 1 ? NAME_LINE : field === 'name' ? errorWords(add.error) : undefined;
   const chosen = state.roles.filter((role) => roleIds.includes(role.id)).map((role) => role.id);
@@ -117,21 +128,24 @@ export function AddEmployeeDialog({
             </Dialog.Close>
           }
         >
-          <div className="flex flex-col gap-3">
-            <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-              Not who you meant?
-              <button
-                type="button"
-                onClick={() => void undoAdd()}
-                disabled={undo.isPending}
-                className="inline-flex cursor-pointer items-center gap-1 rounded font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {undo.isPending ? <Spinner className="size-3" /> : null}
-                {undo.isPending ? 'Removing…' : 'Undo'}
-              </button>
-            </p>
-            {undo.error ? <InlineError error={undo.error} /> : null}
-          </div>
+          {/* Undo is for an account that was already there. A login made just now stays, and its email is already out, so Undo would promise more than it does. */}
+          {joined ? (
+            <div className="flex flex-col gap-3">
+              <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                Not who you meant?
+                <button
+                  type="button"
+                  onClick={() => void undoAdd()}
+                  disabled={undo.isPending}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {undo.isPending ? <Spinner className="size-3" /> : null}
+                  {undo.isPending ? 'Removing…' : 'Undo'}
+                </button>
+              </p>
+              {undo.error ? <InlineError error={undo.error} /> : null}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog.Root>
     );
@@ -203,17 +217,19 @@ export function AddEmployeeDialog({
             </p>
           </DialogSection>
           {bottomError ? (
-            <InlineError
-              error={bottomError}
-              action={
-                signUp ? (
-                  <Button size="sm" onClick={(event) => void copy(signUp, event.currentTarget)}>
-                    {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-                    {copied ? 'Copied' : 'Copy sign-up link'}
-                  </Button>
-                ) : null
-              }
-            />
+            <div ref={bottomRef}>
+              <InlineError
+                error={bottomError}
+                action={
+                  signUp ? (
+                    <Button size="sm" onClick={(event) => void copy(signUp, event.currentTarget)}>
+                      {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+                      {copied ? 'Copied' : 'Copy sign-up link'}
+                    </Button>
+                  ) : null
+                }
+              />
+            </div>
           ) : null}
           {signUp && failed ? (
             <p role="alert" className="-mt-3 text-xs leading-relaxed text-danger-strong">

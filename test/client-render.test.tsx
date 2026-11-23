@@ -673,4 +673,33 @@ describe('the calls the page makes', () => {
     expect(odd).toBeInstanceOf(TeamError);
     expect(words(clean(renderToString(<InlineError error={odd} when="load" />)))).toBe(ERROR_WORDS.loadFailed);
   });
+
+  test('a "not found" from a Team route is told apart: GET me says whether they are signed out or lost the page', async () => {
+    const notFound = () => Response.json({ error: { type: 'not_found', code: 'route_not_found', message: 'This page does not exist.' }, requestId: 'req_1' }, { status: 404 });
+    // Signed out: me is "not found" too.
+    answer = notFound;
+    const signedOut = await teamRoutes(BASE).removeEmployee({ id: 'u', token: 't' }).catch((error: unknown) => error);
+    expect(sent.map(({ url, init }) => `${init.method} ${url}`)).toEqual([`DELETE ${BASE}/employees/u?token=t`, `GET ${BASE}/me`]);
+    expect([(signedOut as TeamError).status, (signedOut as TeamError).code]).toEqual([401, 'not_signed_in']);
+    expect(words(clean(renderToString(<InlineError error={signedOut} />)))).toBe(ERROR_WORDS.signedOut);
+
+    // Still signed in, so the Team page is not theirs anymore: me answers.
+    sent.length = 0;
+    answer = () => (sent.length === 1 ? notFound() : Response.json({ massAccess: false, employee: true, pages: [], actions: [] }));
+    const lost = await teamRoutes(BASE).state().catch((error: unknown) => error);
+    expect(sent.map(({ url }) => url)).toEqual([BASE, `${BASE}/me`]);
+    expect((lost as TeamError).code).toBe('route_not_found');
+    expect(words(clean(renderToString(<InlineError error={lost} />)))).toBe(ERROR_WORDS.lostPage);
+
+    // me itself is never asked twice.
+    sent.length = 0;
+    answer = notFound;
+    await teamRoutes(BASE).me().catch(() => undefined);
+    expect(sent).toHaveLength(1);
+  });
+
+  test('a field is 16px on a phone, so an iPhone does not zoom in when it is tapped', () => {
+    const html = renderToString(<RoleEditorFields state={massAccessState()} isNew name="" onName={() => {}} pages={[]} actions={[]} onPage={() => {}} onAction={() => {}} />);
+    expect(html).toMatch(/<input[^>]*class="[^"]*\btext-base\b[^"]*\bsm:text-sm\b/);
+  });
 });

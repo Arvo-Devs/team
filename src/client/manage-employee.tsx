@@ -48,8 +48,15 @@ export function ManageEmployeeDialog({
   const chosen = state.roles.filter((role) => roleIds.includes(role.id)).map((role) => role.id);
   const hidden = employee.hiddenRoles;
   const opens = opensWith(state, chosen);
-  // With roles this viewer can't see, the pages those open are not in the list: say nothing rather than something untrue.
-  const live = hidden > 0 && opens.length === 0 ? null : opensSentence('Can open', opens, chosen.length + hidden, state.everyEmployee);
+  // With roles this viewer can't see, the pages those open are not in the list. With none they can see ticked, the line
+  // would be only the every-employee pages, as if that were all: say nothing. With some ticked, say the list isn't whole.
+  const sentence = opensSentence('Can open', opens, chosen.length + hidden, state.everyEmployee);
+  const live =
+    hidden === 0
+      ? sentence
+      : chosen.length === 0
+        ? null
+        : `${sentence.replace(/\.$/, '')}, plus what their other ${hidden === 1 ? 'role opens' : 'roles open'}.`;
 
   /** Someone else removed them: the deck's line with their name (the route doesn't know it). */
   const goneLine = `Someone else removed ${name}.`;

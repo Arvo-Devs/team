@@ -536,7 +536,7 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
       const roles = await lockRolesForShare(tx, roleIds);
       if (roles.length !== new Set(roleIds).size) throw new Refused('conflict', 'role_gone', 'One of those roles was just deleted. Close this and try again.');
       if (!(await insertEmployee(tx, account.id, me?.id ?? null))) {
-        throw new Refused('conflict', 'already_employee', `${personName(account)} is already an employee.`);
+        throw new Refused('conflict', 'already_employee', `${personName(account)} is already an employee.`, undefined, 'email');
       }
       await giveRoles(tx, account.id, roleIds, me?.id ?? null);
       await insertHistory(tx, {
@@ -563,6 +563,11 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
       if (!mine) throw new Refused('permission', 'not_yours', 'You can only give roles you have yourself.');
       await refuseRolesNotHeld(sql, mine.roleIds, roleIds);
     }
+    // The same for a role that is gone, whoever asks: nobody gets a login for an add that can't finish.
+    const wanted = [...new Set(roleIds)];
+    if ((await readRolesByIds(sql, wanted)).length !== wanted.length) {
+      throw new Refused('conflict', 'role_gone', 'One of those roles was just deleted. Close this and try again.');
+    }
 
     let account = await config.accounts.byEmail(email);
     let made = false;
@@ -587,9 +592,9 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
       emailed = made ? result.emailed !== false : null;
     }
 
-    if (account.id === me.id) throw new Refused('invalid_request', 'self', "You can't add yourself.");
+    if (account.id === me.id) throw new Refused('invalid_request', 'self', "You can't add yourself.", undefined, 'email');
     if (await massAccessOf(account.id)) {
-      throw new Refused('invalid_request', 'has_mass_access', `${personName(account)} has Mass Access, so they already open every page.`);
+      throw new Refused('invalid_request', 'has_mass_access', `${personName(account)} has Mass Access, so they already open every page.`, undefined, 'email');
     }
     // An account someone else could have made with this address before it was confirmed never joins.
     if (!made && account.emailVerified !== true) {
@@ -602,7 +607,21 @@ export function createTeamCore<User extends TeamUser>(config: ResolvedTeamConfig
       );
     }
 
-    const roles = await putOnTeam(sql, me, account, roleIds, made);
+    let roles: StoredRole[];
+    try {
+      roles = await putOnTeam(sql, me, account, roleIds, made);
+    } catch (error) {
+      if (!made) throw error;
+      // Their login exists now, and its email may be out, but they are not on the team. Say so: adding them
+      // again waits on that email being confirmed, and a bare refusal would leave the person stuck with no reason.
+      const refused = error instanceof Refused ? error : null;
+      if (!refused) config.log(`[Team] a login was made for ${account.id}, but they could not be put on the team`, error);
+      throw new Refused(
+        refused?.type ?? 'internal',
+        'account_made_not_added',
+        `${refused ? `${refused.message} ` : ''}Their login was made${emailed === false ? '' : ' and they were emailed'}, but they aren't on the team yet. Once they've confirmed their email, add them again.`,
+      );
+    }
     if (!made) {
       // A session opened on this account before its email was confirmed must not get the new pages.
       try {

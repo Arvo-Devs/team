@@ -55,6 +55,8 @@ export function historyKey(basePath: string) {
 
 /** What a failed call says when no answer came back at all. */
 const NO_ANSWER = "You're offline. Check your connection.";
+/** What a call says once the session has run out. */
+const SIGNED_OUT = "You've been signed out. Sign in again to keep going.";
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
@@ -81,6 +83,26 @@ async function call<T>(url: string, { method = 'GET', body, signal }: { method?:
 
 const segment = (value: string) => encodeURIComponent(value);
 
+/**
+ * A Team route answers "not found" both to someone signed out and to someone
+ * who can't open the Team page anymore, so the address tells neither of them
+ * anything. The page needs to say which it is: GET me answers anyone signed
+ * in, so a "not found" from it too means the session ran out.
+ */
+async function tellingSignedOut<T>(basePath: string, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (!(error instanceof TeamError) || error.code !== 'route_not_found') throw error;
+    const signedOut = await call<TeamView>(`${basePath}/me`).then(
+      () => false,
+      (meError: unknown) => meError instanceof TeamError && meError.code === 'route_not_found',
+    );
+    if (signedOut) throw new TeamError(401, { message: SIGNED_OUT, type: 'authentication', code: 'not_signed_in' }, error.requestId);
+    throw error;
+  }
+}
+
 /** A new role, as the page sends it: the id is made here unless the dialog made one when it opened. */
 export type NewRole = Omit<NewRoleBody, 'id'> & { id?: string };
 
@@ -91,23 +113,34 @@ export type NewRole = Omit<NewRoleBody, 'id'> & { id?: string };
  * cookies (same-origin credentials).
  */
 export function teamRoutes(basePath: string) {
+  const team = <T,>(work: () => Promise<T>) => tellingSignedOut(basePath, work);
   return {
-    state: (signal?: AbortSignal) => call<TeamState>(basePath, { signal }),
+    state: (signal?: AbortSignal) => team(() => call<TeamState>(basePath, { signal })),
     me: (signal?: AbortSignal) => call<TeamView>(`${basePath}/me`, { signal }),
-    history: (before: string | null, signal?: AbortSignal) => call<HistoryPage>(`${basePath}/history${before ? `?before=${segment(before)}` : ''}`, { signal }),
-    addEmployee: (body: AddEmployeeBody) => call<AddResult>(`${basePath}/employees`, { method: 'POST', body }),
+    history: (before: string | null, signal?: AbortSignal) =>
+      team(() => call<HistoryPage>(`${basePath}/history${before ? `?before=${segment(before)}` : ''}`, { signal })),
+    addEmployee: (body: AddEmployeeBody) => team(() => call<AddResult>(`${basePath}/employees`, { method: 'POST', body })),
     manageEmployee: ({ id, roleIds, token }: ManageEmployeeBody & { id: string }) =>
-      call<EmployeeView>(`${basePath}/employees/${segment(id)}`, { method: 'PATCH', body: { roleIds, token } satisfies ManageEmployeeBody }),
+      team(() => call<EmployeeView>(`${basePath}/employees/${segment(id)}`, { method: 'PATCH', body: { roleIds, token } satisfies ManageEmployeeBody })),
     removeEmployee: ({ id, token }: { id: string; token: string }) =>
-      call<{ removed: true }>(`${basePath}/employees/${segment(id)}?token=${segment(token)}`, { method: 'DELETE' }),
+      team(() => call<{ removed: true }>(`${basePath}/employees/${segment(id)}?token=${segment(token)}`, { method: 'DELETE' })),
     createRole: ({ id, name, pages, actions }: NewRole) =>
-      call<RoleView>(`${basePath}/roles`, { method: 'POST', body: { id: id ?? newRoleId(), name, pages, actions } satisfies NewRoleBody }),
+      team(() => call<RoleView>(`${basePath}/roles`, { method: 'POST', body: { id: id ?? newRoleId(), name, pages, actions } satisfies NewRoleBody })),
     editRole: ({ id, name, pages, actions, version }: EditRoleBody & { id: string }) =>
-      call<RoleView>(`${basePath}/roles/${segment(id)}`, { method: 'PATCH', body: { name, pages, actions, version } satisfies EditRoleBody }),
+      team(() => call<RoleView>(`${basePath}/roles/${segment(id)}`, { method: 'PATCH', body: { name, pages, actions, version } satisfies EditRoleBody })),
     deleteRole: ({ id, version }: { id: string; version: number }) =>
-      call<{ deleted: true }>(`${basePath}/roles/${segment(id)}?version=${segment(String(version))}`, { method: 'DELETE' }),
+      team(() => call<{ deleted: true }>(`${basePath}/roles/${segment(id)}?version=${segment(String(version))}`, { method: 'DELETE' })),
   };
 }
+
+/**
+ * react-query holds a read or a save back while the browser says it is
+ * offline, and sends it when the connection returns. Here that would leave
+ * the page on "Still loading" or "Saving…" with no word, and send a change
+ * later that the person had given up on. So every call goes at once and
+ * fails at once, with the offline line.
+ */
+const SEND_NOW = { networkMode: 'always' } as const;
 
 type Routes = ReturnType<typeof teamRoutes>;
 
@@ -117,6 +150,7 @@ export function useTeamState() {
   return useQuery<TeamState, TeamError>({
     queryKey: stateKey(basePath),
     queryFn: ({ signal }) => teamRoutes(basePath).state(signal),
+    ...SEND_NOW,
   });
 }
 
@@ -130,6 +164,7 @@ export function useTeamView() {
   return useQuery<TeamView, TeamError>({
     queryKey: viewKey(basePath),
     queryFn: ({ signal }) => teamRoutes(basePath).me(signal),
+    ...SEND_NOW,
   });
 }
 
@@ -142,6 +177,7 @@ export function useTeamHistory({ enabled = true }: { enabled?: boolean } = {}) {
     initialPageParam: null,
     getNextPageParam: (last) => (last.more && last.rows.length > 0 ? last.rows[last.rows.length - 1]!.id : undefined),
     enabled,
+    ...SEND_NOW,
   });
 }
 
@@ -154,6 +190,7 @@ function useTeamWrite<K extends 'addEmployee' | 'manageEmployee' | 'removeEmploy
   return useMutation<Result, TeamError, Vars>({
     mutationFn: (vars) => (teamRoutes(basePath)[route] as (vars: Vars) => Promise<Result>)(vars),
     onSettled: () => qc.invalidateQueries({ queryKey: teamKey(basePath) }),
+    ...SEND_NOW,
   });
 }
 

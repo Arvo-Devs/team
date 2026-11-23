@@ -101,7 +101,7 @@ export function EmptyState({
           <Icon className="size-5" />
         </div>
       ) : null}
-      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="max-w-full text-sm font-semibold text-foreground [overflow-wrap:anywhere]">{title}</p>
       {children ? <div className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">{children}</div> : null}
       {action ? <div className="mt-5 flex flex-wrap items-center justify-center gap-2">{action}</div> : null}
     </div>
@@ -145,7 +145,7 @@ export function ErrorState({
       <div className="mb-4 grid size-10 place-items-center rounded-xl border border-danger-border bg-danger-soft text-danger-strong">
         <Icon className="size-5" />
       </div>
-      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="max-w-full text-sm font-semibold text-foreground [overflow-wrap:anywhere]">{title}</p>
       {rest ? <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">{rest}</p> : null}
       {onRetry && (kind === 'offline' || kind === 'failed') ? (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

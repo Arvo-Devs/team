@@ -165,6 +165,7 @@ export type TeamErrorCode =
   | 'has_mass_access'
   | 'self'
   | 'email_not_confirmed'
+  | 'account_made_not_added'
   | 'no_account'
   | 'not_yours'
   | 'out_of_reach'
